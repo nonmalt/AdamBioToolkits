@@ -102,10 +102,12 @@ class GutMicrobiomeHealthIndex():
             OptimTheta = RangeThetaFD[np.argmax(ThetaSearch)]
             self.ThetaF = OptimTheta[0]
             self.ThetaD = OptimTheta[1]
+            self.accuracy = max(ThetaSearch)
             
         else:
             self.ThetaF = ThetaF
             self.ThetaD = ThetaD
+            self.accuracy = self.xMM(health, nonhealth, self.ThetaF, self.ThetaD)
 
         # get species list
         self.Mh, self.Mn = self.__get_mlist(health, nonhealth, ThetaF, ThetaD)
