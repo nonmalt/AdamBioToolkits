@@ -22,17 +22,13 @@ class GutMicrobiomeHealthIndex():
         sample = sample.loc[:, M]
         return sample.sum() / sample.shape[0]
     
-    def __collective_abundance(self, sample, M):
-        richness = sample.copy()
-        richness[richness > 0] = 1
-        
-        RichnessOfMSpeciesInSample = sample[M].sum()
+    def __collective_abundance(self, sample, M):      
+        RichnessOfMSpeciesInSample = np.nonzero(sample[M].values)[0].shape[0]
         SizeOfM = len(M)
-        
-        IndexSetOfM = sample.copy()
-        IndexSetOfM = IndexSetOfM[M]
+
+        IndexSetOfM = sample[M]
         IndexSetOfM = IndexSetOfM[IndexSetOfM != 0]
-        
+
         GeometricMean = np.abs(IndexSetOfM * np.log(IndexSetOfM)).sum()
         
         return RichnessOfMSpeciesInSample / SizeOfM * GeometricMean
@@ -92,6 +88,8 @@ class GutMicrobiomeHealthIndex():
     
     def xMM(self, health, nonhealth, ThetaF, ThetaD):
         Mh, Mn = self.__get_mlist(health, nonhealth, ThetaF, ThetaD)
+        if (len(Mh) == 0) or (len(Mn) == 0):
+            return 0
         xMM = self.__proportions_of_samples_classified(health, nonhealth, Mh, Mn)
         return xMM
         
