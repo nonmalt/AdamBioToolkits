@@ -96,6 +96,9 @@ class GutMicrobiomeHealthIndex():
         return xMM
         
     def fit(self, health, nonhealth):
+        # Reset params
+        self.ThetaF = 0, self.ThetaD = 0
+
         # Filter
         health[health < self.low_abundance] = 0
         nonhealth[nonhealth < self.low_abundance] = 0
