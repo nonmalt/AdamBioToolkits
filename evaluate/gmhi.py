@@ -97,7 +97,8 @@ class GutMicrobiomeHealthIndex():
         
     def fit(self, health, nonhealth):
         # Reset params
-        self.ThetaF = 0, self.ThetaD = 0
+        self.ThetaF = 0
+        self.ThetaD = 0
 
         # Filter
         health[health < self.low_abundance] = 0
@@ -106,10 +107,10 @@ class GutMicrobiomeHealthIndex():
         # De-redundancy features
         health = health.loc[:, health.sum(axis=0) != 0]
         nonhealth = nonhealth.loc[:, nonhealth.sum(axis=0) != 0]
-        features_col = set(list(health.columns) + list(nonhealth.columns))
+        self.features_col = set(list(health.columns) + list(nonhealth.columns))
 
-        health = health.reindex(features_col, axis=1).fillna(0)
-        nonhealth = nonhealth.reindex(features_col, axis=1).fillna(0)
+        health = health.reindex(self.features_col, axis=1).fillna(0)
+        nonhealth = nonhealth.reindex(self.features_col, axis=1).fillna(0)
 
         # params search
         if (self.ThetaF == 0) or (self.ThetaD == 0):
@@ -132,12 +133,14 @@ class GutMicrobiomeHealthIndex():
 
     def transform(self, sample):
         if type(sample) == pd.core.series.Series:
+            sample = sample[self.features_col].fillna(0)
             cabH = self.__collective_abundance(sample, self.Mh)
             cabN = self.__collective_abundance(sample, self.Mn)
             hiMM = self.__ratio_of_collective_abundance(cabH, cabN)
         
         elif type(sample) == pd.core.frame.DataFrame:
             hiMM = []
+            sample = sample.reindex(self.features_col, axis=1).fillna(0)
             for idx in sample.index:
                 samp = sample.loc[idx, :]
                 cabH = self.__collective_abundance(samp, self.Mh)
