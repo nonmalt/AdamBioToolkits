@@ -100,6 +100,14 @@ class GutMicrobiomeHealthIndex():
         health[health < self.low_abundance] = 0
         nonhealth[nonhealth < self.low_abundance] = 0
         
+        # De-redundancy features
+        health = health.loc[:, health.sum(axis=0) != 0]
+        nonhealth = nonhealth.loc[:, nonhealth.sum(axis=0) != 0]
+        features_col = set(list(health.columns) + list(nonhealth.columns))
+
+        health = health.reindex(features_col, axis=1).fillna(0)
+        nonhealth = nonhealth.reindex(features_col, axis=1).fillna(0)
+
         # params search
         if (self.ThetaF == 0) or (self.ThetaD == 0):
             RangeThetaF = np.arange(1+self.step, self.MaxF, self.step)
