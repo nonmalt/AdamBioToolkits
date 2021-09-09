@@ -13,8 +13,15 @@ net_db=str(net_db,'utf-8')
 net_db = StringIO(net_db) 
 net_db = pd.read_csv(net_db)
 
+default_intake_id = ['Cellotetraose', 'D-Arabinose', 'D-Fructose', 'D-Galactose',
+       'D-Galacturonate', 'D-Glucose', 'D-Glucuronic acid', 'D-Mannose',
+       'D-Ribose', 'D-Xylose', 'Dextrin', 'FOS', 'Glycerol', 'L-Rhamnose',
+       'Maltose', 'N-Acetyl-D-Glucosamine', 'N-Acetylgalactosamine',
+       'XOS', 'Lactose', 'Raffinose']
+# Ref: Evidence for a multi-level trophic organization of the human gut microbiome.
+
 class TrophicNetEstimater:
-    def __init__(self, f, n_levels, intake_id, net=net_db):
+    def __init__(self, f, n_levels, intake_id=default_intake_id, net=net_db):
         self.f = f
         self.n_levels = n_levels
         
