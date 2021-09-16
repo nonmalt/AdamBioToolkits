@@ -1,4 +1,5 @@
 import numpy as np
+from numpy.lib.arraysetops import unique
 import pandas as pd
 
 from pkgutil import get_data
@@ -11,7 +12,7 @@ from scipy.optimize import minimize, rosen, rosen_der
 net_db = get_data(__package__, 'netdb_v210909.csv')
 net_db=str(net_db,'utf-8')
 net_db = StringIO(net_db) 
-net_db = pd.read_csv(net_db)
+net_db = pd.read_csv(net_db, index_col=0)
 
 default_intake_id = ['Cellotetraose', 'D-Arabinose', 'D-Fructose', 'D-Galactose',
        'D-Galacturonate', 'D-Glucose', 'D-Glucuronic acid', 'D-Mannose',
@@ -21,7 +22,7 @@ default_intake_id = ['Cellotetraose', 'D-Arabinose', 'D-Fructose', 'D-Galactose'
 # Ref: Evidence for a multi-level trophic organization of the human gut microbiome.
 
 class TrophicNetEstimater:
-    def __init__(self, f, n_levels, intake_id=default_intake_id, net=net_db):
+    def __init__(self, f, n_levels, intake_id=default_intake_id, net=net_db, unproduced_adjust=False):
         self.f = f
         self.n_levels = n_levels
         
@@ -29,7 +30,8 @@ class TrophicNetEstimater:
             intake_id = np.array(intake_id)
         self.intake_id = intake_id
         self.net = net
-        
+        self.unproduced_adjust = unproduced_adjust
+
     def _get_id(self, species_df):
         species_id = np.intersect1d(species_df.columns, self.net.species)
         
@@ -123,7 +125,12 @@ class TrophicNetEstimater:
         
         # get in / out matrix
         import_matrix, export_matrix = self._get_usage_matrix(species_id, metabolites_id, species_norm.iloc[0,:].values)
-    
+
+        # unproduced intake adjust 
+        if self.unproduced_adjust is True:
+            unproduced_intake_id = export_matrix.columns[export_matrix.sum(axis=0) == 0]
+            self.intake_id = list(set(self.intake_id + list(unproduced_intake_id)))
+
         # fit & format intakes
         intakes_fit = self._fit_intake(species_norm, self.f, self.n_levels, import_matrix, export_matrix).x
         intakes = np.zeros((import_matrix.shape[1],1))
