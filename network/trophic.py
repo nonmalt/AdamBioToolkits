@@ -57,7 +57,7 @@ class TrophicNetEstimater:
         in_degree = import_matrix.sum(axis=0).values.reshape(1,-1)
         in_degree[in_degree == 0] = 1
         import_matrix = import_matrix / in_degree
-                
+        
         out_degree = export_matrix.sum(axis=1).values.reshape(-1,1)
         out_degree[out_degree == 0] = 1
         export_matrix = export_matrix / out_degree
@@ -129,7 +129,7 @@ class TrophicNetEstimater:
         # unproduced intake adjust 
         if self.unproduced_adjust is True:
             unproduced_intake_id = export_matrix.columns[export_matrix.sum(axis=0) == 0]
-            self.intake_id = list(set(self.intake_id + list(unproduced_intake_id)))
+            self.intake_id = np.array(set(list(self.intake_id) + list(unproduced_intake_id)))
 
         # fit & format intakes
         intakes_fit = self._fit_intake(species_norm, self.f, self.n_levels, import_matrix, export_matrix).x
