@@ -129,7 +129,7 @@ class TrophicNetEstimater:
         # unproduced intake adjust 
         if self.unproduced_adjust is True:
             unproduced_intake_id = export_matrix.columns[export_matrix.sum(axis=0) == 0]
-            self.intake_id = np.array(set(list(self.intake_id) + list(unproduced_intake_id)))
+            self.intake_id = np.unique(list(self.intake_id) + list(unproduced_intake_id))
 
         # fit & format intakes
         intakes_fit = self._fit_intake(species_norm, self.f, self.n_levels, import_matrix, export_matrix).x
