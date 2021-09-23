@@ -4,149 +4,82 @@ from joblib import Parallel, delayed
 from multiprocessing import cpu_count
 
 class GutMicrobiomeHealthIndex():
-    def __init__(self, ThetaF=0, ThetaD=0, n_jobs=1, low_abundance=1e-5, MaxF=2, MaxD=1, step=0.1):
+    '''
+        Update: 2021/09/23
+        New:
+            Rewrite & Imporve performance
+    '''
+    def __init__(self, ThetaF=0, ThetaD=0, low_abundance=1e-5, MaxF=2, MaxD=1, step=0.1, n_jobs=1):
         self.ThetaF = ThetaF
         self.ThetaD = ThetaD
         self.low_abundance = low_abundance
-        self.MaxF = MaxF
-        self.MaxD = MaxD
+        self.MaxF = MaxF + step
+        self.MaxD = MaxD + step
         self.step = step
+        self.n_jobs = n_jobs
+    
+    def __get_Mlist(self, Hea, NonHea, ThetaF, ThetaD):
+        self.Mh, self.Mn = [], []
         
-        if n_jobs == -1:
-            self.n_jobs = cpu_count()
+        PMh = (Hea > self.low_abundance).sum(axis=0) / Hea.shape[0]
+        PMh = PMh.mask(PMh == 0, 1e-10)
+        PMn = (NonHea > self.low_abundance).sum(axis=0) / NonHea.shape[0]
+        PMn = PMn.mask(PMn == 0, 1e-10)
+
+        PrevalenceFoldChange = PMh / PMn
+        PrevalenceDifferent = PMh - PMn
+        
+        self.Mh = np.intersect1d(PrevalenceFoldChange.index[PrevalenceFoldChange > ThetaF],
+                                 PrevalenceDifferent.index[PrevalenceDifferent > ThetaD])
+        self.Mn = np.intersect1d(PrevalenceFoldChange.index[1/PrevalenceFoldChange > ThetaF],
+                                 PrevalenceDifferent.index[-PrevalenceDifferent > ThetaD])
+    
+    def __collective_abundance(self, df, M):
+        if M.shape[0] > 0:
+            RichnessRel = (df.reindex(M, axis=1) > 0).sum(axis=1) / M.shape[0]
+
+            dfm = df.reindex(M, axis=1)
+            PsiM = (dfm[dfm>0]) * np.log(dfm[dfm>0]) # Shannon index
+            return RichnessRel * PsiM.sum(axis=1) * -1
         else:
-            self.n_jobs = n_jobs
+            return None
         
-        
-    def __species_prevalence(self, sample, M):
-        sample = sample.loc[:, M]
-        return sample.sum() / sample.shape[0]
+    def __scoring(self, df):
+        PsiMh = self.__collective_abundance(df, self.Mh)
+        PsiMn = self.__collective_abundance(df, self.Mn)
+        return np.log10((PsiMh+1e-5)/(PsiMn+1e-5)) if PsiMn is not None else None
     
-    def __collective_abundance(self, sample, M):
-        richness = sample.copy()
-        richness[richness > 0] = 1
-        
-        RichnessOfMSpeciesInSample = sample[M].sum()
-        SizeOfM = len(M)
-        
-        IndexSetOfM = sample.copy()
-        IndexSetOfM = IndexSetOfM[M]
-        IndexSetOfM = IndexSetOfM[IndexSetOfM != 0]
-        
-        GeometricMean = np.abs(IndexSetOfM * np.log(IndexSetOfM)).sum()
-        
-        return RichnessOfMSpeciesInSample / SizeOfM * GeometricMean
-        
-        
-    def __ratio_of_collective_abundance(self, cabH, cabN):
-        if cabH == 0:
-            cabH = 1e-10
-        if cabN == 0:
-            cabN = 1e-10
-        return np.log10(cabH / cabN)
+    def __balanced_accuracy(self, Hea, NonHea):
+        Hacc = (self.__scoring(Hea) > 0).sum() / Hea.shape[0] if self.__scoring(Hea) is not None else 0
+        Nacc = (self.__scoring(NonHea) < 0).sum() / NonHea.shape[0] if self.__scoring(NonHea) is not None else 0
+        return (Hacc + Nacc) / 2
     
-    def __get_mlist(self, health, nonhealth, ThetaF, ThetaD):
-        Mh, Mn = [], []
-        for i in health.columns:
-            PMh = self.__collective_abundance(health, i)
-            PMn = self.__collective_abundance(nonhealth, i)
-            
-            if PMh == 0:
-                PMh = 1e-10
-            if PMn == 0:
-                PMn = 1e-10
-            
-            PrevalenceFoldChange = PMh / PMn
-            PrevalenceDifferece = PMh - PMn
-            
-            if (PrevalenceFoldChange > ThetaF) and (PrevalenceDifferece > ThetaD):
-                Mh.append(i)
-            
-            if ((1 / PrevalenceFoldChange) > ThetaF) and ((-PrevalenceDifferece) > ThetaD):
-                Mn.append(i)
-            
-        return Mh, Mn
-    
-    def __proportions_of_samples_classified(self, health, nonhealth, Mh, Mn):
-        NTrueHealth = 0
-        for i in health.index:
-            i = health.loc[i, :]
-            cabH = self.__collective_abundance(i, Mh)
-            cabN = self.__collective_abundance(i, Mn)
-            hiMM = self.__ratio_of_collective_abundance(cabH, cabN)
-            
-            if hiMM > 0:
-                NTrueHealth = NTrueHealth + 1
+    def _parallel_fitting(self, Hea, NonHea, ThetaF, ThetaD):
+        self.__get_Mlist(Hea, NonHea, ThetaF, ThetaD)
+        return self.__balanced_accuracy(Hea, NonHea)
         
-        NTrueNonHealth = 0
-        for i in nonhealth.index:
-            i = nonhealth.loc[i, :]
-            cabH = self.__collective_abundance(i, Mh)
-            cabN = self.__collective_abundance(i, Mn)
-            hiMM = self.__ratio_of_collective_abundance(cabH, cabN)
-            
-            if hiMM < 0:
-                NTrueNonHealth = NTrueNonHealth + 1
-        
-        return (NTrueHealth / health.shape[0] + NTrueNonHealth / nonhealth.shape[0]) / 2
-    
-    def xMM(self, health, nonhealth, ThetaF, ThetaD):
-        Mh, Mn = self.__get_mlist(health, nonhealth, ThetaF, ThetaD)
-        xMM = self.__proportions_of_samples_classified(health, nonhealth, Mh, Mn)
-        return xMM
-        
-    def fit(self, health, nonhealth):
-        # Reset params
-        self.ThetaF = 0
-        self.ThetaD = 0
-
-        # Filter
-        health[health < self.low_abundance] = 0
-        nonhealth[nonhealth < self.low_abundance] = 0
-        
-        # De-redundancy features
-        health = health.loc[:, health.sum(axis=0) != 0]
-        nonhealth = nonhealth.loc[:, nonhealth.sum(axis=0) != 0]
-        self.features_col = set(list(health.columns) + list(nonhealth.columns))
-
-        health = health.reindex(self.features_col, axis=1).fillna(0)
-        nonhealth = nonhealth.reindex(self.features_col, axis=1).fillna(0)
-
-        # params search
+    def fit(self, Hea, NonHea):
         if (self.ThetaF == 0) or (self.ThetaD == 0):
-            RangeThetaF = np.arange(1+self.step, self.MaxF, self.step)
-            RangeThetaD = np.arange(self.step, self.MaxD, self.step)
-            
             RangeThetaFD = []
-            for F in RangeThetaF:
-                for D in RangeThetaD:
+            for F in np.arange(1+self.step, self.MaxF, self.step):
+                for D in np.arange(self.step, self.MaxD, self.step):
                     RangeThetaFD.append([F, D])
-            
-            ThetaSearch = Parallel(n_jobs=self.n_jobs)(delayed(self.xMM)(health, nonhealth, i[0], i[1]) for i in RangeThetaFD)
-            OptimTheta = RangeThetaFD[np.argmax(ThetaSearch)]
-            self.ThetaF = OptimTheta[0]
-            self.ThetaD = OptimTheta[1]
-            self.accuracy = max(ThetaSearch)
-
-        # get species list
-        self.Mh, self.Mn = self.__get_mlist(health, nonhealth, self.ThetaF, self.ThetaD)
-
-    def transform(self, sample):
-        if type(sample) == pd.core.series.Series:
-            sample = sample[self.features_col].fillna(0)
-            cabH = self.__collective_abundance(sample, self.Mh)
-            cabN = self.__collective_abundance(sample, self.Mn)
-            hiMM = self.__ratio_of_collective_abundance(cabH, cabN)
         
-        elif type(sample) == pd.core.frame.DataFrame:
-            hiMM = []
-            sample = sample.reindex(self.features_col, axis=1).fillna(0)
-            for idx in sample.index:
-                samp = sample.loc[idx, :]
-                cabH = self.__collective_abundance(samp, self.Mh)
-                cabN = self.__collective_abundance(samp, self.Mn)
-                hiMMSingle = self.__ratio_of_collective_abundance(cabH, cabN)
-                hiMM.append(hiMMSingle)
-            
-            hiMM = pd.DataFrame(hiMM, index=sample.index, columns=['GMHI'])   
-        return hiMM
+            ThetaSearch = Parallel(n_jobs=self.n_jobs)(delayed(self._parallel_fitting)(Hea, NonHea, *i) for i in RangeThetaFD)
+    
+            self.ThetaF, self.ThetaD = RangeThetaFD[np.argmax(ThetaSearch)]
+            self.accuracy = max(ThetaSearch)
+        
+        self.__get_Mlist(Hea, NonHea, self.ThetaF, self.ThetaD)
+    
+    def predict(self, df):
+        pred = self.predict_proba(df)
+        for i in pred.index:
+            if pred.loc[i, 'GHMI'] > 0:
+                pred.loc[i, 'GHMI'] = 'Healthy'
+            elif pred.loc[i, 'GHMI']  < 0:
+                pred.loc[i, 'GHMI'] = 'NonHealthy'
+        return pred
+    
+    def predict_proba(self, df):
+        return pd.DataFrame(self.__scoring(df), columns=['GHMI'])
