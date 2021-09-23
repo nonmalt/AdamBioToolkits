@@ -46,6 +46,8 @@ class GutMicrobiomeHealthIndex():
         
     def __scoring(self, df):
         PsiMh = self.__collective_abundance(df, self.Mh)
+        PsiMh = PsiMh if PsiMh is not None else 0
+
         PsiMn = self.__collective_abundance(df, self.Mn)
         return np.log10((PsiMh+1e-5)/(PsiMn+1e-5)) if PsiMn is not None else None
     
