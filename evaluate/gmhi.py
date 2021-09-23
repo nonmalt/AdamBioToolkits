@@ -84,4 +84,4 @@ class GutMicrobiomeHealthIndex():
         return pred
     
     def predict_proba(self, df):
-        return pd.DataFrame(self.__scoring(df), columns=['GHMI'])
+        return pd.DataFrame(self.__scoring(df), columns=['GMHI'])
